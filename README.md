@@ -11,26 +11,39 @@ Installable local plugin scaffold with:
 - OpenClaw DM/group policy gates, pairing, routing, debounce/dedupe
 - status/probe wiring in OpenClaw channel model
 
-## Quick local install (linked dev mode)
+## Install
+
+Install from the published plugin package:
 
 ```bash
-openclaw plugins install -l /home/crusty/oc-recontrib/openclaw-fluxer
-openclaw plugins enable fluxer
+openclaw plugins install @lucasconnellm/openclaw-fluxer
+openclaw plugin enable fluxer
 openclaw gateway restart
 ```
 
-`-l` keeps it linked, so gateway restarts pick up local code changes.
+If you’re developing locally, use a linked install as needed.
 
-## Minimum config to test
+## Configure
 
-Set these under `channels.fluxer`:
+Use OpenClaw’s JSON config format. Set your `fluxer` block like this:
 
-```yaml
-channels:
-  fluxer:
-    enabled: true
-    apiToken: "<YOUR_FLUXER_BOT_TOKEN>"
-    baseUrl: "https://api.fluxer.app"
+```json
+{
+  "fluxer": {
+    "enabled": true,
+    "apiToken": "<REDACTED>",
+    "baseUrl": "https://api.fluxer.app",
+    "authScheme": "bot",
+    "dmPolicy": "allowlist",
+    "allowFrom": [
+      "<YOUR_USER_ID>"
+    ],
+    "groupPolicy": "allowlist",
+    "groupAllowFrom": [
+      "<YOUR_USER_ID>"
+    ]
+  }
+}
 ```
 
 ### Notes on `baseUrl`
@@ -38,46 +51,21 @@ channels:
 - If your API root is standard hosted Fluxer, `https://api.fluxer.app` is correct.
 - If self-hosted behind `/api/v1`, set `baseUrl` to the parent API root (for example `https://fluxer.example/api`) so the SDK resolves `/v1` correctly.
 
-## Recommended test policy config
+### Optional config knobs
 
-For quickest smoke testing from DMs/groups:
-
-```yaml
-channels:
-  fluxer:
-    enabled: true
-    apiToken: "<YOUR_FLUXER_BOT_TOKEN>"
-    baseUrl: "https://api.fluxer.app"
-
-    # Fast testing mode (open DM with explicit wildcard requirement)
-    dmPolicy: open
-    allowFrom: ["*"]
-
-    # Group policy (open for testing, tighten later)
-    groupPolicy: open
-```
-
-Safer default is:
-
-```yaml
-channels:
-  fluxer:
-    dmPolicy: pairing
-    groupPolicy: allowlist
-```
-
-## Optional config knobs
-
-```yaml
-channels:
-  fluxer:
-    authScheme: bot        # bot (default) | bearer
-    textChunkLimit: 4000
-    reconnect:
-      baseDelayMs: 1000
-      maxDelayMs: 30000
-      maxAttempts: 0
-      jitterRatio: 0.2
+```json
+{
+  "fluxer": {
+    "authScheme": "bot",
+    "textChunkLimit": 4000,
+    "reconnect": {
+      "baseDelayMs": 1000,
+      "maxDelayMs": 30000,
+      "maxAttempts": 0,
+      "jitterRatio": 0.2
+    }
+  }
+}
 ```
 
 You can also use env vars (default account only):
