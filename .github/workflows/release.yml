@@ -16,8 +16,9 @@ jobs:
       # Setup .npmrc file to publish to npm
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: "22.14.0"
           registry-url: 'https://registry.npmjs.org'
+      - run: npm i -g npm@latest
       - run: npm ci
       - run: npm test
 
@@ -30,4 +31,4 @@ jobs:
             echo "::error::Tag v$TAG_VERSION does not match package.json version $PKG_VERSION"
             exit 1
           fi
-      - run: npm publish --provenance --access public
+      - run: npm publish --access public
