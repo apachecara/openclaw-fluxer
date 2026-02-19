@@ -12,6 +12,10 @@
     "README.md",
     "docs"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lucasconnellm/openclaw-fluxer.git"
+  },
   "dependencies": {
     "@fluxerjs/core": "^1.1.9",
     "zod": "^4.3.6"
