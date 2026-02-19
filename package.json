@@ -1,5 +1,5 @@
 {
-  "name": "@lucasconnellm/openclaw-fluxer",
+  "name": "@lucasconnellm/fluxer",
   "version": "0.1.4",
   "description": "OpenClaw Fluxer channel plugin powered by @fluxerjs/core",
   "type": "module",
@@ -50,7 +50,7 @@
       "./index.ts"
     ],
     "install": {
-      "npmSpec": "@lucasconnellm/openclaw-fluxer",
+      "npmSpec": "@lucasconnellm/fluxer",
       "localPath": ".",
       "defaultChoice": "npm"
     }
