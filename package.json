@@ -46,6 +46,9 @@
       "order": 75,
       "quickstartAllowFrom": true
     },
+    "extensions": [
+      "./index.ts"
+    ],
     "install": {
       "npmSpec": "@lucasconnellm/openclaw-fluxer",
       "localPath": ".",
