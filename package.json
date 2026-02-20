@@ -17,7 +17,7 @@
     "url": "git+https://github.com/lucasconnellm/openclaw-fluxer.git"
   },
   "dependencies": {
-    "@fluxerjs/core": "^1.1.9",
+    "@fluxerjs/core": "^1.2.0",
     "zod": "^4.3.6"
   },
   "peerDependencies": {

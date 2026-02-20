@@ -261,6 +261,7 @@ function createCoreClient(config: FluxerClientConfig): Client {
   const { api, version } = resolveRestApiAndVersion(config.baseUrl);
   const client = new Client({
     intents: 0,
+    suppressIntentWarning: true,
     rest: {
       api,
       version,
