@@ -1,4 +1,4 @@
-import { Client, Events, type Message, type PartialMessage } from "@fluxerjs/core";
+import { Client, Events, Routes, type Message, type PartialMessage } from "@fluxerjs/core";
 import type { BaseProbeResult } from "openclaw/plugin-sdk";
 import type { FluxerApiError, FluxerErrorClass } from "./types.js";
 
@@ -48,6 +48,7 @@ export type FluxerMonitorInboundParams = {
 export type FluxerClient = {
   sendText: (input: FluxerSendTextInput) => Promise<FluxerSendTextResult>;
   sendMedia: (input: FluxerSendMediaInput) => Promise<FluxerSendTextResult>;
+  sendTyping: (params: { channelId: string; abortSignal?: AbortSignal }) => Promise<void>;
   probe: (params: { timeoutMs: number; abortSignal?: AbortSignal }) => Promise<FluxerProbeResult>;
   monitorInbound: (params: FluxerMonitorInboundParams) => Promise<void>;
 };
@@ -517,6 +518,27 @@ export function createFluxerClient(config: FluxerClientConfig): FluxerClient {
           }
         },
         { abortSignal: input.abortSignal },
+      );
+    },
+
+    sendTyping: async ({ channelId, abortSignal }) => {
+      const trimmedChannelId = channelId.trim();
+      if (!trimmedChannelId) {
+        throw new Error("Fluxer sendTyping requires channelId");
+      }
+
+      return withRetry(
+        async () => {
+          const client = createCoreClient(config);
+          try {
+            await client.rest.post(Routes.channelTyping(trimmedChannelId), {});
+          } catch (error) {
+            throw formatError(error);
+          } finally {
+            await client.destroy().catch(() => undefined);
+          }
+        },
+        { abortSignal },
       );
     },
 
