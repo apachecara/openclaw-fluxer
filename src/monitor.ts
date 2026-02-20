@@ -634,8 +634,8 @@ export async function monitorFluxerProvider(opts: MonitorFluxerOpts = {}): Promi
       start: async () => {
         const typingClient = clientFactory({
           accountId: account.accountId,
-          baseUrl,
-          apiToken,
+          baseUrl: baseUrl!,
+          apiToken: apiToken!,
           authScheme: account.config.authScheme,
         });
         await typingClient.sendTyping({ channelId: chatId });
