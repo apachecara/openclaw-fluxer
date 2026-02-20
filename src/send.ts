@@ -41,6 +41,20 @@ function resolveClientDeps(opts: SendFluxerOpts) {
   return { runtime, cfg, account, client };
 }
 
+function resolveFluxerChannelId(target: string): string {
+  const trimmed = target.trim();
+  const idx = trimmed.indexOf(":");
+  if (idx <= 0) {
+    return trimmed;
+  }
+  const kind = trimmed.slice(0, idx).toLowerCase();
+  const id = trimmed.slice(idx + 1).trim();
+  if (kind === "channel" || kind === "group") {
+    return id;
+  }
+  throw new Error("Fluxer reactions require a channel/group target (use channel:<id> or group:<id>)");
+}
+
 export async function sendMessageFluxer(
   to: string,
   text: string,
@@ -65,7 +79,6 @@ export async function sendMessageFluxer(
     accountId: account.accountId,
   });
 
-  // Record outbound activity
   runtime.channel.activity.record({
     channel: "fluxer",
     accountId: account.accountId,
@@ -130,6 +143,58 @@ export async function sendMediaFluxer(
       target,
       mediaUrl,
       accountId: account.accountId,
+    },
+  };
+}
+
+export async function sendReactionFluxer(
+  params: {
+    to: string;
+    messageId: string;
+    emoji: string;
+    remove?: boolean;
+  },
+  opts: SendFluxerOpts = {},
+): Promise<{ ok: true; meta: Record<string, unknown> }> {
+  const { runtime, account, client } = resolveClientDeps(opts);
+
+  const target = normalizeFluxerMessagingTarget(params.to);
+  if (!target) {
+    throw new Error("Fluxer target is required (expected channel:<id> or group:<id>)");
+  }
+
+  const channelId = resolveFluxerChannelId(target);
+  const messageId = params.messageId.trim();
+  const emoji = params.emoji.trim();
+  if (!messageId) {
+    throw new Error("Fluxer react requires messageId");
+  }
+  if (!emoji) {
+    throw new Error("Fluxer react requires emoji");
+  }
+
+  await client.react({
+    channelId,
+    messageId,
+    emoji,
+    remove: params.remove,
+  });
+
+  runtime.channel.activity.record({
+    channel: "fluxer",
+    accountId: account.accountId,
+    direction: "outbound",
+  });
+
+  return {
+    ok: true,
+    meta: {
+      target,
+      channelId,
+      accountId: account.accountId,
+      messageId,
+      emoji,
+      remove: Boolean(params.remove),
     },
   };
 }

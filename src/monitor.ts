@@ -195,6 +195,31 @@ export async function monitorFluxerProvider(opts: MonitorFluxerOpts = {}): Promi
 
   const clientFactory = opts.createClient ?? createFluxerClient;
 
+  const requestedSlashPrefixes =
+    account.config.slashCommandPrefixes?.map((value) => String(value).trim()).filter(Boolean) ??
+    ["models"];
+  if (requestedSlashPrefixes.length > 0) {
+    try {
+      const registrationClient = clientFactory({
+        accountId: account.accountId,
+        baseUrl,
+        apiToken,
+        authScheme: account.config.authScheme,
+      });
+      const registration = await registrationClient.registerSlashPrefixes({
+        prefixes: requestedSlashPrefixes,
+        abortSignal,
+      });
+      logger.info?.(
+        `[${account.accountId}] registered slash command prefixes for app ${registration.applicationId}: ${registration.registered.map((name) => `/${name}`).join(", ")}`,
+      );
+    } catch (error) {
+      logger.warn?.(
+        `[${account.accountId}] slash prefix registration skipped/failed: ${formatErrorMessage(error)}`,
+      );
+    }
+  }
+
   const reconnectConfig = {
     baseDelayMs: account.config.reconnect?.baseDelayMs ?? DEFAULT_RECONNECT.baseDelayMs,
     maxDelayMs: account.config.reconnect?.maxDelayMs ?? DEFAULT_RECONNECT.maxDelayMs,
@@ -631,7 +656,15 @@ export async function monitorFluxerProvider(opts: MonitorFluxerOpts = {}): Promi
     });
 
     const typingCallbacks = createTypingCallbacks({
-      start: async () => undefined,
+      start: async () => {
+        const typingClient = clientFactory({
+          accountId: account.accountId,
+          baseUrl: baseUrl!,
+          apiToken: apiToken!,
+          authScheme: account.config.authScheme,
+        });
+        await typingClient.sendTyping({ channelId: chatId });
+      },
       onStartError: (err) => {
         logTypingFailure({
           log: (message) => logger.debug?.(message),

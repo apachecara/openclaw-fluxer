@@ -25,6 +25,7 @@ const FluxerAccountSchemaBase = z
     responsePrefix: z.string().optional(),
     reconnect: FluxerReconnectSchema.optional(),
     authScheme: z.enum(["bearer", "token", "bot"]).optional(),
+    slashCommandPrefixes: z.array(z.string().min(1)).optional(),
   })
   .strict();
 

@@ -1,4 +1,4 @@
-import { Client, Events, type Message, type PartialMessage } from "@fluxerjs/core";
+import { Client, Events, Routes, type Message, type PartialMessage } from "@fluxerjs/core";
 import type { BaseProbeResult } from "openclaw/plugin-sdk";
 import type { FluxerApiError, FluxerErrorClass } from "./types.js";
 
@@ -45,9 +45,23 @@ export type FluxerMonitorInboundParams = {
   onDisconnected?: (info?: { reason?: string }) => void;
 };
 
+export type FluxerReactInput = {
+  channelId: string;
+  messageId: string;
+  emoji: string;
+  remove?: boolean;
+  abortSignal?: AbortSignal;
+};
+
 export type FluxerClient = {
   sendText: (input: FluxerSendTextInput) => Promise<FluxerSendTextResult>;
   sendMedia: (input: FluxerSendMediaInput) => Promise<FluxerSendTextResult>;
+  react: (input: FluxerReactInput) => Promise<void>;
+  sendTyping: (params: { channelId: string; abortSignal?: AbortSignal }) => Promise<void>;
+  registerSlashPrefixes: (params: {
+    prefixes: string[];
+    abortSignal?: AbortSignal;
+  }) => Promise<{ applicationId: string; registered: string[] }>;
   probe: (params: { timeoutMs: number; abortSignal?: AbortSignal }) => Promise<FluxerProbeResult>;
   monitorInbound: (params: FluxerMonitorInboundParams) => Promise<void>;
 };
@@ -247,6 +261,7 @@ function createCoreClient(config: FluxerClientConfig): Client {
   const { api, version } = resolveRestApiAndVersion(config.baseUrl);
   const client = new Client({
     intents: 0,
+    suppressIntentWarning: true,
     rest: {
       api,
       version,
@@ -318,6 +333,13 @@ function inferFilenameFromUrl(rawUrl: string): string {
     // ignore URL parse errors; fallback below
   }
   return "attachment";
+}
+
+function normalizeCommandPrefix(raw: string): string | null {
+  const trimmed = raw.trim().replace(/^\/+/, "").toLowerCase();
+  if (!trimmed) return null;
+  if (!/^[a-z0-9_-]{1,32}$/.test(trimmed)) return null;
+  return trimmed;
 }
 
 export function resolveChatType(message: Message): "direct" | "group" | "channel" {
@@ -517,6 +539,97 @@ export function createFluxerClient(config: FluxerClientConfig): FluxerClient {
           }
         },
         { abortSignal: input.abortSignal },
+      );
+    },
+
+    react: async (input) => {
+      const channelId = input.channelId.trim();
+      const messageId = input.messageId.trim();
+      const emoji = input.emoji.trim();
+      if (!channelId) {
+        throw new Error("Fluxer react requires channelId");
+      }
+      if (!messageId) {
+        throw new Error("Fluxer react requires messageId");
+      }
+      if (!emoji) {
+        throw new Error("Fluxer react requires emoji");
+      }
+
+      return withRetry(
+        async () => {
+          const client = createCoreClient(config);
+          try {
+            const message = await client.fetchMessage(channelId, messageId);
+            if (input.remove) {
+              await message.removeReaction(emoji);
+            } else {
+              await message.react(emoji);
+            }
+          } catch (error) {
+            throw formatError(error);
+          } finally {
+            await client.destroy().catch(() => undefined);
+          }
+        },
+        { abortSignal: input.abortSignal },
+      );
+    },
+
+    sendTyping: async ({ channelId, abortSignal }) => {
+      const trimmedChannelId = channelId.trim();
+      if (!trimmedChannelId) {
+        throw new Error("Fluxer sendTyping requires channelId");
+      }
+
+      return withRetry(
+        async () => {
+          const client = createCoreClient(config);
+          try {
+            await client.rest.post(Routes.channelTyping(trimmedChannelId), {});
+          } catch (error) {
+            throw formatError(error);
+          } finally {
+            await client.destroy().catch(() => undefined);
+          }
+        },
+        { abortSignal },
+      );
+    },
+
+    registerSlashPrefixes: async ({ prefixes, abortSignal }) => {
+      const normalized = Array.from(
+        new Set(prefixes.map((prefix) => normalizeCommandPrefix(prefix)).filter(Boolean)),
+      ) as string[];
+      if (normalized.length === 0) {
+        throw new Error("Fluxer registerSlashPrefixes requires at least one valid prefix");
+      }
+
+      return withRetry(
+        async () => {
+          const client = createCoreClient(config);
+          try {
+            const me = await client.rest.get<{ id?: string }>("/applications/@me");
+            const applicationId = me.id?.trim();
+            if (!applicationId) {
+              throw new Error("Unable to resolve application id from /applications/@me");
+            }
+
+            const payload = normalized.map((name) => ({
+              type: 1,
+              name,
+              description: `OpenClaw ${name} command`,
+            }));
+
+            await client.rest.put(Routes.applicationCommands(applicationId), payload);
+            return { applicationId, registered: normalized };
+          } catch (error) {
+            throw formatError(error);
+          } finally {
+            await client.destroy().catch(() => undefined);
+          }
+        },
+        { abortSignal },
       );
     },
 
