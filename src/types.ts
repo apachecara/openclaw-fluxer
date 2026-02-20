@@ -40,6 +40,8 @@ export type FluxerAccountConfig = {
   botId?: string;
   /** Auth scheme for API requests (e.g. "bearer", "token", "bot"). Default: "bearer". */
   authScheme?: string;
+  /** Optional slash command prefixes to register (e.g. ["models"]). */
+  slashCommandPrefixes?: string[];
 };
 
 export type FluxerConfig = {

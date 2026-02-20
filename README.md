@@ -95,7 +95,8 @@ You can also use env vars (default account only):
 - ✅ reaction add inbound event captured
 - ✅ media attachment URLs passed inbound
 - ✅ outbound media supports native URL attachments via @fluxerjs/core file payloads
-- ⚠️ outbound reactions not wired yet
+- ✅ outbound reactions wired (`react` action)
+- ⚠️ slash command registration is experimental (`slashCommandPrefixes`, default tries `/models`)
 - ⚠️ thread routing parity not complete
 
 ## Dev checks

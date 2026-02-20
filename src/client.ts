@@ -58,6 +58,10 @@ export type FluxerClient = {
   sendMedia: (input: FluxerSendMediaInput) => Promise<FluxerSendTextResult>;
   react: (input: FluxerReactInput) => Promise<void>;
   sendTyping: (params: { channelId: string; abortSignal?: AbortSignal }) => Promise<void>;
+  registerSlashPrefixes: (params: {
+    prefixes: string[];
+    abortSignal?: AbortSignal;
+  }) => Promise<{ applicationId: string; registered: string[] }>;
   probe: (params: { timeoutMs: number; abortSignal?: AbortSignal }) => Promise<FluxerProbeResult>;
   monitorInbound: (params: FluxerMonitorInboundParams) => Promise<void>;
 };
@@ -330,6 +334,13 @@ function inferFilenameFromUrl(rawUrl: string): string {
   return "attachment";
 }
 
+function normalizeCommandPrefix(raw: string): string | null {
+  const trimmed = raw.trim().replace(/^\/+/, "").toLowerCase();
+  if (!trimmed) return null;
+  if (!/^[a-z0-9_-]{1,32}$/.test(trimmed)) return null;
+  return trimmed;
+}
+
 export function resolveChatType(message: Message): "direct" | "group" | "channel" {
   const channel = message.channel;
   if (channel?.isDM()) {
@@ -575,6 +586,42 @@ export function createFluxerClient(config: FluxerClientConfig): FluxerClient {
           const client = createCoreClient(config);
           try {
             await client.rest.post(Routes.channelTyping(trimmedChannelId), {});
+          } catch (error) {
+            throw formatError(error);
+          } finally {
+            await client.destroy().catch(() => undefined);
+          }
+        },
+        { abortSignal },
+      );
+    },
+
+    registerSlashPrefixes: async ({ prefixes, abortSignal }) => {
+      const normalized = Array.from(
+        new Set(prefixes.map((prefix) => normalizeCommandPrefix(prefix)).filter(Boolean)),
+      ) as string[];
+      if (normalized.length === 0) {
+        throw new Error("Fluxer registerSlashPrefixes requires at least one valid prefix");
+      }
+
+      return withRetry(
+        async () => {
+          const client = createCoreClient(config);
+          try {
+            const me = await client.rest.get<{ id?: string }>("/applications/@me");
+            const applicationId = me.id?.trim();
+            if (!applicationId) {
+              throw new Error("Unable to resolve application id from /applications/@me");
+            }
+
+            const payload = normalized.map((name) => ({
+              type: 1,
+              name,
+              description: `OpenClaw ${name} command`,
+            }));
+
+            await client.rest.put(Routes.applicationCommands(applicationId), payload);
+            return { applicationId, registered: normalized };
           } catch (error) {
             throw formatError(error);
           } finally {
