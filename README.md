@@ -1,6 +1,16 @@
-# @lucasconnellm/openclaw-fluxer
+![Openclaw Fluxer Plugin banner](docs/assets/openclaw-fluxer-banner.jpg)
+
+# Openclaw Fluxer Plugin
 
 Fluxer channel plugin for OpenClaw, built on top of `@fluxerjs/core`.
+
+## Experimental disclaimer
+
+This project is **highly experimental** and provided **"as is"**.
+By using it, you accept all risk and are solely responsible for any outcomes,
+including service interruptions, data issues, policy violations, account actions,
+or other repercussions. The author/maintainer is **not liable** for any damages
+or consequences resulting from use of this software.
 
 ## Current status
 
@@ -16,10 +26,14 @@ Installable local plugin scaffold with:
 Install from the published plugin package:
 
 ```bash
-openclaw plugins install @lucasconnellm/openclaw-fluxer
+openclaw plugins install @lucasconnellm/fluxer
 openclaw plugin enable fluxer
 openclaw gateway restart
 ```
+
+The package is now named `@lucasconnellm/fluxer` because OpenClaw appears to infer
+plugin identity from the repo/package name. Publishing under `openclaw-fluxer`
+was causing install/registration mismatches in practice.
 
 If you’re developing locally, use a linked install as needed.
 
@@ -91,3 +105,7 @@ npm install
 npm run typecheck
 npm test
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE).

@@ -320,12 +320,19 @@ function inferFilenameFromUrl(rawUrl: string): string {
   return "attachment";
 }
 
-function resolveChatType(message: Message): "direct" | "group" | "channel" {
+export function resolveChatType(message: Message): "direct" | "group" | "channel" {
   const channel = message.channel;
   if (channel?.isDM()) {
     // Group DM channels usually have a name; 1:1 DM channels usually do not.
     return channel.name ? "group" : "direct";
   }
+
+  // DM channels may be missing from cache (message.channel === null), especially
+  // for freshly created/unseen DMs. In that case guildId is still null.
+  if (message.guildId == null) {
+    return "direct";
+  }
+
   return "channel";
 }
 

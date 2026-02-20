@@ -1,6 +1,6 @@
 {
-  "name": "@lucasconnellm/openclaw-fluxer",
-  "version": "0.1.3",
+  "name": "@lucasconnellm/fluxer",
+  "version": "0.2.0",
   "description": "OpenClaw Fluxer channel plugin powered by @fluxerjs/core",
   "type": "module",
   "license": "MIT",
@@ -46,8 +46,11 @@
       "order": 75,
       "quickstartAllowFrom": true
     },
+    "extensions": [
+      "./index.ts"
+    ],
     "install": {
-      "npmSpec": "@lucasconnellm/openclaw-fluxer",
+      "npmSpec": "@lucasconnellm/fluxer",
       "localPath": ".",
       "defaultChoice": "npm"
     }
