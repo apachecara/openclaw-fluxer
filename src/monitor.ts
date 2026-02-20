@@ -631,7 +631,15 @@ export async function monitorFluxerProvider(opts: MonitorFluxerOpts = {}): Promi
     });
 
     const typingCallbacks = createTypingCallbacks({
-      start: async () => undefined,
+      start: async () => {
+        const typingClient = clientFactory({
+          accountId: account.accountId,
+          baseUrl,
+          apiToken,
+          authScheme: account.config.authScheme,
+        });
+        await typingClient.sendTyping({ channelId: chatId });
+      },
       onStartError: (err) => {
         logTypingFailure({
           log: (message) => logger.debug?.(message),
