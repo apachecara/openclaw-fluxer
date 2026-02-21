@@ -49,6 +49,8 @@ export type FluxerAccountConfig = {
       guildId: string;
       channelId: string;
     }>;
+    /** User IDs to auto-subscribe for voice responder mode after auto-join. */
+    autoSubscribeUsers?: string[];
     tts?: {
       provider?: string;
       openai?: {

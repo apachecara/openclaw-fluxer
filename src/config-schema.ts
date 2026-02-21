@@ -39,6 +39,7 @@ const FluxerAccountSchemaBase = z
               .strict(),
           )
           .optional(),
+        autoSubscribeUsers: z.array(z.string().min(1)).optional(),
         tts: z
           .object({
             provider: z.string().optional(),
