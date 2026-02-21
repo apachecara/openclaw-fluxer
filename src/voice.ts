@@ -33,6 +33,8 @@ type ParticipantAudioState = {
   totalSamples: number;
   processing: boolean;
   frameCount: number;
+  utteranceStartedAtMs?: number;
+  lastUtteranceDurationMs?: number;
 };
 
 type VoiceResponderSession = {
@@ -54,7 +56,8 @@ type VoiceResponderSession = {
 const voiceClients = new Map<string, VoiceClientState>();
 const voiceResponderSessions = new Map<string, VoiceResponderSession>();
 
-const MIN_UTTERANCE_SAMPLES = 48_000 / 4; // ~250ms @48kHz mono
+const DEFAULT_MIN_UTTERANCE_MS = 250;
+const DEFAULT_MIN_UTTERANCE_FALLBACK_MS = 2_500;
 const MAX_BUFFER_SAMPLES = 48_000 * 20; // ~20s safety cap
 const VOICE_TRACE_ENABLED = process.env.FLUXER_VOICE_TRACE !== "0";
 
@@ -298,6 +301,35 @@ function applyVoiceTtsOverrides(cfg: OpenClawConfig, accountId: string): OpenCla
   return next;
 }
 
+function resolveVoiceUtteranceThresholds(accountId: string): {
+  minUtteranceMs: number;
+  minUtteranceFallbackMs: number;
+} {
+  const runtime = getFluxerRuntime();
+  const cfg = runtime.config.loadConfig();
+  const account = resolveFluxerAccount({ cfg, accountId });
+  const minUtteranceMsRaw = account.config.voice?.minUtteranceMs;
+  const fallbackMsRaw = account.config.voice?.minUtteranceFallbackMs;
+
+  const minUtteranceMs = Math.max(
+    0,
+    Number.isFinite(minUtteranceMsRaw as number)
+      ? Number(minUtteranceMsRaw)
+      : DEFAULT_MIN_UTTERANCE_MS,
+  );
+  const minUtteranceFallbackMs = Math.max(
+    minUtteranceMs,
+    Number.isFinite(fallbackMsRaw as number)
+      ? Number(fallbackMsRaw)
+      : DEFAULT_MIN_UTTERANCE_FALLBACK_MS,
+  );
+
+  return {
+    minUtteranceMs,
+    minUtteranceFallbackMs,
+  };
+}
+
 async function buildAssistantReplyFromAudio(params: {
   accountId: string;
   channelId: string;
@@ -530,21 +562,36 @@ async function processSpeakerUtterance(params: {
 }): Promise<void> {
   const state = params.session.participants.get(params.participantId);
   if (!state || state.processing) return;
-  if (state.totalSamples < MIN_UTTERANCE_SAMPLES) {
-    voiceTrace("dropping short utterance", {
-      sessionKey: params.session.key,
-      participantId: params.participantId,
-      requestedUserId: state.requestedUserId,
-      totalSamples: state.totalSamples,
-      minSamples: MIN_UTTERANCE_SAMPLES,
-    });
-    state.chunks = [];
-    state.totalSamples = 0;
-    return;
-  }
 
   const requestedUserId = state.requestedUserId;
   const sourceParticipantId = state.sourceParticipantId;
+  const sampleRate = state.sampleRate || 48_000;
+  const { minUtteranceMs, minUtteranceFallbackMs } = resolveVoiceUtteranceThresholds(
+    params.session.accountId,
+  );
+  const minSamples = Math.max(1, Math.floor((sampleRate * minUtteranceMs) / 1000));
+  const utteranceDurationMs =
+    state.lastUtteranceDurationMs ??
+    (state.utteranceStartedAtMs ? Date.now() - state.utteranceStartedAtMs : 0);
+  const meetsSampleGate = state.totalSamples >= minSamples;
+  const meetsTimeFallback = utteranceDurationMs >= minUtteranceFallbackMs && state.totalSamples > 0;
+
+  if (!meetsSampleGate && !meetsTimeFallback) {
+    voiceTrace("dropping short utterance", {
+      sessionKey: params.session.key,
+      participantId: sourceParticipantId,
+      requestedUserId,
+      totalSamples: state.totalSamples,
+      minSamples,
+      utteranceDurationMs,
+      minUtteranceMs,
+      minUtteranceFallbackMs,
+    });
+    state.chunks = [];
+    state.totalSamples = 0;
+    state.lastUtteranceDurationMs = undefined;
+    return;
+  }
 
   voiceTrace("processing utterance", {
     sessionKey: params.session.key,
@@ -552,13 +599,20 @@ async function processSpeakerUtterance(params: {
     requestedUserId,
     totalSamples: state.totalSamples,
     frameCount: state.frameCount,
+    utteranceDurationMs,
+    minSamples,
+    minUtteranceMs,
+    minUtteranceFallbackMs,
+    gate: meetsSampleGate ? "sample" : "time-fallback",
   });
-  const sampleRate = state.sampleRate || 48_000;
+
   const channels = state.channels || 1;
   const chunks = state.chunks;
   state.chunks = [];
   state.totalSamples = 0;
   state.processing = true;
+  state.lastUtteranceDurationMs = undefined;
+  state.utteranceStartedAtMs = undefined;
 
   const wavSamples = flattenInt16(chunks);
   const wavBuffer = encodePcm16Wav(wavSamples, sampleRate, channels);
@@ -745,6 +799,8 @@ function ensureResponderSession(params: {
       state.chunks = [];
       state.totalSamples = 0;
       state.frameCount = 0;
+      state.utteranceStartedAtMs = Date.now();
+      state.lastUtteranceDurationMs = undefined;
     },
     onSpeakerStop: ({ participantId }) => {
       const state = resolveParticipantStateForIncoming(session, participantId);
@@ -759,12 +815,18 @@ function ensureResponderSession(params: {
         });
         return;
       }
+      const utteranceDurationMs = state.utteranceStartedAtMs
+        ? Math.max(0, Date.now() - state.utteranceStartedAtMs)
+        : undefined;
+      state.lastUtteranceDurationMs = utteranceDurationMs;
+
       voiceTrace("speaker stop", {
         sessionKey: session.key,
         participantId,
         requestedUserId: state.requestedUserId,
         totalSamples: state.totalSamples,
         frameCount: state.frameCount,
+        utteranceDurationMs,
       });
       const sourceParticipantId = state.sourceParticipantId;
       session.queue = session.queue
@@ -1067,6 +1129,8 @@ export async function voiceSubscribeFluxer(params: {
     totalSamples: 0,
     processing: false,
     frameCount: 0,
+    utteranceStartedAtMs: undefined,
+    lastUtteranceDurationMs: undefined,
   });
   session.aliases.set(params.userId, resolvedParticipantId);
 
