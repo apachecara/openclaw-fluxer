@@ -26,6 +26,9 @@ const FluxerAccountSchemaBase = z
     reconnect: FluxerReconnectSchema.optional(),
     authScheme: z.enum(["bearer", "token", "bot"]).optional(),
     slashCommandPrefixes: z.array(z.string().min(1)).optional(),
+    voiceAutoJoin: z.boolean().optional(),
+    voiceAutoJoinGuildId: z.string().min(1).optional(),
+    voiceAutoJoinChannelId: z.string().min(1).optional(),
   })
   .strict();
 

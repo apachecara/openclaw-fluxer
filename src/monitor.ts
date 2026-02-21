@@ -28,6 +28,7 @@ import {
 } from "./normalize.js";
 import { getFluxerRuntime } from "./runtime.js";
 import { sendMessageFluxer } from "./send.js";
+import { voiceJoinFluxer } from "./voice.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -216,6 +217,27 @@ export async function monitorFluxerProvider(opts: MonitorFluxerOpts = {}): Promi
     } catch (error) {
       logger.warn?.(
         `[${account.accountId}] slash prefix registration skipped/failed: ${formatErrorMessage(error)}`,
+      );
+    }
+  }
+
+  if (
+    account.config.voiceAutoJoin &&
+    account.config.voiceAutoJoinGuildId?.trim() &&
+    account.config.voiceAutoJoinChannelId?.trim()
+  ) {
+    try {
+      await voiceJoinFluxer({
+        accountId: account.accountId,
+        guildId: account.config.voiceAutoJoinGuildId.trim(),
+        channelId: account.config.voiceAutoJoinChannelId.trim(),
+      });
+      logger.info?.(
+        `[${account.accountId}] voice auto-joined guild=${account.config.voiceAutoJoinGuildId} channel=${account.config.voiceAutoJoinChannelId}`,
+      );
+    } catch (error) {
+      logger.warn?.(
+        `[${account.accountId}] voice auto-join failed: ${formatErrorMessage(error)}`,
       );
     }
   }

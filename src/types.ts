@@ -42,6 +42,12 @@ export type FluxerAccountConfig = {
   authScheme?: string;
   /** Optional slash command prefixes to register (e.g. ["models"]). */
   slashCommandPrefixes?: string[];
+  /** Enable voice auto-join on monitor startup. */
+  voiceAutoJoin?: boolean;
+  /** Guild/server id to auto-join for voice. */
+  voiceAutoJoinGuildId?: string;
+  /** Voice channel id to auto-join. */
+  voiceAutoJoinChannelId?: string;
 };
 
 export type FluxerConfig = {
