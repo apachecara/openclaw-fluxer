@@ -25,6 +25,8 @@ type VoiceClientState = {
 
 type ParticipantAudioState = {
   subscription: LiveKitReceiveSubscription;
+  requestedUserId: string;
+  sourceParticipantId: string;
   sampleRate: number;
   channels: number;
   chunks: Int16Array[];
@@ -40,6 +42,7 @@ type VoiceResponderSession = {
   channelId: string;
   connection: LiveKitRtcConnection;
   participants: Map<string, ParticipantAudioState>;
+  aliases: Map<string, string>;
   unsubscribedFrameCounts: Map<string, number>;
   queue: Promise<void>;
   onAudioFrame: (frame: LiveKitAudioFrame) => void;
@@ -127,6 +130,42 @@ async function waitForClientReady(client: Client, timeoutMs = 15_000): Promise<v
 
 function toSessionKey(accountId: string, guildId: string, channelId: string): string {
   return `${accountId}:${guildId}:${channelId}`;
+}
+
+function canonicalId(value: string): string {
+  return value.trim().toLowerCase().replace(/^(user|fluxer|participant):/, "");
+}
+
+function extractNumericTokens(value: string): string[] {
+  return (value.match(/\d{5,}/g) ?? []).filter(Boolean);
+}
+
+function resolveLiveKitParticipantId(params: {
+  requestedUserId: string;
+  remoteParticipantIds: string[];
+}): string {
+  const requested = params.requestedUserId.trim();
+  const requestedCanonical = canonicalId(requested);
+  const requestedTokens = new Set(extractNumericTokens(requested));
+
+  const exact = params.remoteParticipantIds.find((id) => id === requested);
+  if (exact) return exact;
+
+  const canonical = params.remoteParticipantIds.find((id) => canonicalId(id) === requestedCanonical);
+  if (canonical) return canonical;
+
+  const contains = params.remoteParticipantIds.find(
+    (id) => id.includes(requested) || requested.includes(id),
+  );
+  if (contains) return contains;
+
+  const tokenMatch = params.remoteParticipantIds.find((id) => {
+    const tokens = extractNumericTokens(id);
+    return tokens.some((token) => requestedTokens.has(token));
+  });
+  if (tokenMatch) return tokenMatch;
+
+  return requested;
 }
 
 function flattenInt16(chunks: Int16Array[]): Int16Array {
@@ -428,6 +467,7 @@ async function processSpeakerUtterance(params: {
     voiceTrace("dropping short utterance", {
       sessionKey: params.session.key,
       participantId: params.participantId,
+      requestedUserId: state.requestedUserId,
       totalSamples: state.totalSamples,
       minSamples: MIN_UTTERANCE_SAMPLES,
     });
@@ -436,13 +476,16 @@ async function processSpeakerUtterance(params: {
     return;
   }
 
+  const requestedUserId = state.requestedUserId;
+  const sourceParticipantId = state.sourceParticipantId;
+
   voiceTrace("processing utterance", {
     sessionKey: params.session.key,
-    participantId: params.participantId,
+    participantId: sourceParticipantId,
+    requestedUserId,
     totalSamples: state.totalSamples,
     frameCount: state.frameCount,
   });
-
   const sampleRate = state.sampleRate || 48_000;
   const channels = state.channels || 1;
   const chunks = state.chunks;
@@ -453,13 +496,14 @@ async function processSpeakerUtterance(params: {
   const wavSamples = flattenInt16(chunks);
   const wavBuffer = encodePcm16Wav(wavSamples, sampleRate, channels);
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const wavPath = path.join(tmpdir(), `fluxer-voice-in-${params.participantId}-${stamp}.wav`);
+  const wavPath = path.join(tmpdir(), `fluxer-voice-in-${requestedUserId}-${stamp}.wav`);
 
   try {
     await fs.writeFile(wavPath, wavBuffer);
     voiceTrace("wrote utterance wav", {
       sessionKey: params.session.key,
-      participantId: params.participantId,
+      participantId: sourceParticipantId,
+      requestedUserId,
       wavPath,
       wavBytes: wavBuffer.byteLength,
       sampleRate,
@@ -470,21 +514,23 @@ async function processSpeakerUtterance(params: {
       accountId: params.session.accountId,
       guildId: params.session.guildId,
       channelId: params.session.channelId,
-      userId: params.participantId,
+      userId: requestedUserId,
       wavPath,
     });
 
     if (!replyText) {
       voiceTrace("no reply text generated for utterance", {
         sessionKey: params.session.key,
-        participantId: params.participantId,
+        participantId: sourceParticipantId,
+        requestedUserId,
       });
       return;
     }
 
     voiceTrace("reply text generated for utterance", {
       sessionKey: params.session.key,
-      participantId: params.participantId,
+      participantId: sourceParticipantId,
+      requestedUserId,
       textLength: replyText.length,
     });
 
@@ -498,14 +544,16 @@ async function processSpeakerUtterance(params: {
     const logger = runtime.logging.getChildLogger({ module: "fluxer.voice" });
     logger.error?.(`utterance processing failed: ${formatErrorMessage(error)}`, {
       sessionKey: params.session.key,
-      participantId: params.participantId,
+      participantId: sourceParticipantId,
+      requestedUserId,
     });
   } finally {
     state.processing = false;
     await fs.unlink(wavPath).catch(() => undefined);
     voiceTrace("finished utterance processing", {
       sessionKey: params.session.key,
-      participantId: params.participantId,
+      participantId: sourceParticipantId,
+      requestedUserId,
     });
   }
 }
@@ -523,6 +571,7 @@ function teardownResponderSession(key: string): void {
     entry.subscription.stop();
   }
   session.participants.clear();
+  session.aliases.clear();
   session.unsubscribedFrameCounts.clear();
 
   session.connection.off("audioFrame", session.onAudioFrame);
@@ -564,6 +613,7 @@ function ensureResponderSession(params: {
     channelId: params.channelId,
     connection: params.connection,
     participants: new Map(),
+    aliases: new Map(),
     unsubscribedFrameCounts: new Map(),
     queue: Promise.resolve(),
     onAudioFrame: (frame) => {
@@ -572,11 +622,14 @@ function ensureResponderSession(params: {
         const nextCount = (session.unsubscribedFrameCounts.get(frame.participantId) ?? 0) + 1;
         session.unsubscribedFrameCounts.set(frame.participantId, nextCount);
         if (nextCount === 1 || nextCount % 200 === 0) {
-          voiceTrace("audio frame for unsubscribed participant", {
+          voiceTrace(`audio frame for unsubscribed participant: ${frame.participantId}`, {
             sessionKey: session.key,
             participantId: frame.participantId,
             frameCount: nextCount,
-            subscribedUsers: Array.from(session.participants.keys()),
+            subscribedUsers: Array.from(session.participants.values()).map(
+              (state) => state.requestedUserId,
+            ),
+            sourceParticipantIds: Array.from(session.participants.keys()),
           });
         }
         return;
@@ -607,10 +660,13 @@ function ensureResponderSession(params: {
     onSpeakerStart: ({ participantId }) => {
       const state = session.participants.get(participantId);
       if (!state) {
-        voiceTrace("speaker start for unsubscribed participant", {
+        voiceTrace(`speaker start for unsubscribed participant: ${participantId}`, {
           sessionKey: session.key,
           participantId,
-          subscribedUsers: Array.from(session.participants.keys()),
+          subscribedUsers: Array.from(session.participants.values()).map(
+            (state) => state.requestedUserId,
+          ),
+          sourceParticipantIds: Array.from(session.participants.keys()),
         });
         return;
       }
@@ -625,10 +681,13 @@ function ensureResponderSession(params: {
     onSpeakerStop: ({ participantId }) => {
       const state = session.participants.get(participantId);
       if (!state) {
-        voiceTrace("speaker stop for unsubscribed participant", {
+        voiceTrace(`speaker stop for unsubscribed participant: ${participantId}`, {
           sessionKey: session.key,
           participantId,
-          subscribedUsers: Array.from(session.participants.keys()),
+          subscribedUsers: Array.from(session.participants.values()).map(
+            (state) => state.requestedUserId,
+          ),
+          sourceParticipantIds: Array.from(session.participants.keys()),
         });
         return;
       }
@@ -886,22 +945,30 @@ export async function voiceSubscribeFluxer(params: {
   });
 
   const room = (connection as any).room;
-  const remoteParticipantIds = room?.remoteParticipants
-    ? Array.from(room.remoteParticipants.keys())
+  const remoteParticipantIds: string[] = room?.remoteParticipants
+    ? (Array.from(room.remoteParticipants.keys()) as string[])
     : [];
-  voiceTrace("subscribe remote participant snapshot", {
-    accountId,
-    sessionKey: session.key,
+  const resolvedParticipantId = resolveLiveKitParticipantId({
     requestedUserId: params.userId,
     remoteParticipantIds,
   });
 
-  const existing = session.participants.get(params.userId);
+  voiceTrace("subscribe remote participant snapshot", {
+    accountId,
+    sessionKey: session.key,
+    requestedUserId: params.userId,
+    resolvedParticipantId,
+    remoteParticipantIds,
+  });
+
+  const existingKey = session.aliases.get(params.userId) ?? params.userId;
+  const existing = session.participants.get(existingKey);
   if (existing) {
     voiceTrace("subscribe skipped: already subscribed", {
       accountId,
       sessionKey: session.key,
       userId: params.userId,
+      sourceParticipantId: existing.sourceParticipantId,
     });
     return {
       ok: true,
@@ -909,16 +976,20 @@ export async function voiceSubscribeFluxer(params: {
       guildId: params.guildId,
       channelId: params.channelId,
       userId: params.userId,
-      activeSubscriptions: Array.from(session.participants.keys()),
+      activeSubscriptions: (Array.from(session.participants.values()) as ParticipantAudioState[]).map(
+        (state) => state.requestedUserId,
+      ),
     };
   }
 
-  const subscription = connection.subscribeParticipantAudio(params.userId, {
+  const subscription = connection.subscribeParticipantAudio(resolvedParticipantId, {
     autoResubscribe: true,
   });
 
-  session.participants.set(params.userId, {
+  session.participants.set(resolvedParticipantId, {
     subscription,
+    requestedUserId: params.userId,
+    sourceParticipantId: resolvedParticipantId,
     sampleRate: 48_000,
     channels: 1,
     chunks: [],
@@ -926,14 +997,18 @@ export async function voiceSubscribeFluxer(params: {
     processing: false,
     frameCount: 0,
   });
+  session.aliases.set(params.userId, resolvedParticipantId);
 
-  const activeSubscriptions = Array.from(session.participants.keys());
+  const activeSubscriptions = (Array.from(session.participants.values()) as ParticipantAudioState[]).map(
+    (state) => state.requestedUserId,
+  );
   voiceTrace("subscribe succeeded", {
     accountId,
     sessionKey: session.key,
     userId: params.userId,
+    sourceParticipantId: resolvedParticipantId,
     activeSubscriptions,
-    remoteParticipantPresent: remoteParticipantIds.includes(params.userId),
+    remoteParticipantPresent: remoteParticipantIds.includes(resolvedParticipantId),
   });
 
   return {
@@ -986,17 +1061,19 @@ export async function voiceUnsubscribeFluxer(params: {
     };
   }
 
-  const entry = session.participants.get(params.userId);
+  const participantKey = session.aliases.get(params.userId) ?? params.userId;
+  const entry = session.participants.get(participantKey);
   if (entry) {
     entry.subscription.stop();
-    session.participants.delete(params.userId);
+    session.participants.delete(participantKey);
+    session.aliases.delete(params.userId);
     voiceTrace("unsubscribe removed participant", {
       accountId,
       sessionKey: key,
       userId: params.userId,
+      sourceParticipantId: participantKey,
     });
   }
-
   if (session.participants.size === 0) {
     teardownResponderSession(key);
     voiceTrace("unsubscribe emptied session; session removed", {
@@ -1013,7 +1090,9 @@ export async function voiceUnsubscribeFluxer(params: {
     };
   }
 
-  const activeSubscriptions = Array.from(session.participants.keys());
+  const activeSubscriptions = (Array.from(session.participants.values()) as ParticipantAudioState[]).map(
+    (state) => state.requestedUserId,
+  );
   voiceTrace("unsubscribe completed", {
     accountId,
     sessionKey: key,
