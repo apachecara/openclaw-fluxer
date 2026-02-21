@@ -221,24 +221,27 @@ export async function monitorFluxerProvider(opts: MonitorFluxerOpts = {}): Promi
     }
   }
 
-  if (
-    account.config.voiceAutoJoin &&
-    account.config.voiceAutoJoinGuildId?.trim() &&
-    account.config.voiceAutoJoinChannelId?.trim()
-  ) {
-    try {
-      await voiceJoinFluxer({
-        accountId: account.accountId,
-        guildId: account.config.voiceAutoJoinGuildId.trim(),
-        channelId: account.config.voiceAutoJoinChannelId.trim(),
-      });
-      logger.info?.(
-        `[${account.accountId}] voice auto-joined guild=${account.config.voiceAutoJoinGuildId} channel=${account.config.voiceAutoJoinChannelId}`,
-      );
-    } catch (error) {
-      logger.warn?.(
-        `[${account.accountId}] voice auto-join failed: ${formatErrorMessage(error)}`,
-      );
+  const voiceEnabled = account.config.voice?.enabled === true;
+  const autoJoinTargets = (account.config.voice?.autoJoin ?? []).filter(
+    (entry) => entry.guildId?.trim() && entry.channelId?.trim(),
+  );
+
+  if (voiceEnabled && autoJoinTargets.length > 0) {
+    for (const target of autoJoinTargets) {
+      try {
+        await voiceJoinFluxer({
+          accountId: account.accountId,
+          guildId: target.guildId.trim(),
+          channelId: target.channelId.trim(),
+        });
+        logger.info?.(
+          `[${account.accountId}] voice auto-joined guild=${target.guildId} channel=${target.channelId}`,
+        );
+      } catch (error) {
+        logger.warn?.(
+          `[${account.accountId}] voice auto-join failed for guild=${target.guildId} channel=${target.channelId}: ${formatErrorMessage(error)}`,
+        );
+      }
     }
   }
 
