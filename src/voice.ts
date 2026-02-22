@@ -4,10 +4,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Client, Events } from "@fluxerjs/core";
 import {
+  AudioStream,
+  RemoteAudioTrack,
+  type Participant,
+  type RemoteParticipant,
+  type RemoteTrack,
+} from "@livekit/rtc-node";
+import {
   LiveKitRtcConnection,
   getVoiceManager,
-  type LiveKitAudioFrame,
-  type LiveKitReceiveSubscription,
 } from "@fluxerjs/voice";
 import {
   buildAgentMediaPayload,
@@ -21,6 +26,18 @@ import { getFluxerRuntime } from "./runtime.js";
 type VoiceClientState = {
   client: Client;
   connectedAt: number;
+};
+
+type LiveKitAudioFrame = {
+  participantId: string;
+  samples: Int16Array;
+  sampleRate: number;
+  channels: number;
+  samplesPerChannel: number;
+};
+
+type LiveKitReceiveSubscription = {
+  stop: () => void;
 };
 
 type ParticipantAudioState = {
@@ -44,10 +61,13 @@ type VoiceResponderSession = {
   guildId: string;
   channelId: string;
   connection: LiveKitRtcConnection;
+  botUserId?: string;
   participants: Map<string, ParticipantAudioState>;
   aliases: Map<string, string>;
   unsubscribedFrameCounts: Map<string, number>;
   queue: Promise<void>;
+  activeSpeakerIds: Set<string>;
+  roomCleanup: Array<() => void>;
   onAudioFrame: (frame: LiveKitAudioFrame) => void;
   onSpeakerStart: (payload: { participantId: string }) => void;
   onSpeakerStop: (payload: { participantId: string }) => void;
@@ -172,6 +192,32 @@ function resolveLiveKitParticipantId(params: {
   return requested;
 }
 
+function idsLikelyMatch(participantId: string, userId: string): boolean {
+  const left = participantId.trim();
+  const right = userId.trim();
+  if (!left || !right) return false;
+  if (left === right) return true;
+
+  const leftCanonical = canonicalId(left);
+  const rightCanonical = canonicalId(right);
+  if (leftCanonical === rightCanonical) return true;
+
+  if (left.includes(right) || right.includes(left)) return true;
+
+  const leftTokens = extractNumericTokens(left);
+  const rightTokens = extractNumericTokens(right);
+  if (leftTokens.some((token) => token === right)) return true;
+  if (rightTokens.some((token) => token === left)) return true;
+  if (leftTokens.some((token) => rightTokens.includes(token))) return true;
+
+  return false;
+}
+
+function isBotParticipantIdentity(session: VoiceResponderSession, participantId: string): boolean {
+  if (!session.botUserId) return false;
+  return idsLikelyMatch(participantId, session.botUserId);
+}
+
 function resolveParticipantStateForIncoming(
   session: VoiceResponderSession,
   incomingParticipantId: string,
@@ -219,6 +265,187 @@ function resolveParticipantStateForIncoming(
   }
 
   return undefined;
+}
+
+function getParticipantIdentity(participant: Pick<Participant, "identity"> | undefined): string | undefined {
+  const identity = participant?.identity?.trim();
+  return identity ? identity : undefined;
+}
+
+function isAudioTrack(track: RemoteTrack | undefined): track is RemoteAudioTrack {
+  return Boolean(track && track instanceof RemoteAudioTrack);
+}
+
+function bridgeLiveKitSpeakerEvents(session: VoiceResponderSession): void {
+  const room = (session.connection as any).room;
+  if (!room?.on || !room?.off) {
+    voiceWarn("livekit speaker bridge unavailable: room missing", {
+      sessionKey: session.key,
+      channelId: session.channelId,
+    });
+    return;
+  }
+
+  const onActiveSpeakersChanged = (speakers: Participant[]) => {
+    const nextSpeakerIds = new Set<string>();
+    for (const speaker of speakers) {
+      const participantId = getParticipantIdentity(speaker);
+      if (participantId) nextSpeakerIds.add(participantId);
+    }
+
+    for (const participantId of nextSpeakerIds) {
+      if (!session.activeSpeakerIds.has(participantId)) {
+        (session.connection as any).emit?.("speakerStart", { participantId });
+      }
+    }
+
+    for (const participantId of session.activeSpeakerIds) {
+      if (!nextSpeakerIds.has(participantId)) {
+        (session.connection as any).emit?.("speakerStop", { participantId });
+      }
+    }
+
+    session.activeSpeakerIds = nextSpeakerIds;
+  };
+
+  const onParticipantDisconnected = (participant: RemoteParticipant) => {
+    const participantId = getParticipantIdentity(participant);
+    if (!participantId) return;
+    if (!session.activeSpeakerIds.has(participantId)) return;
+    session.activeSpeakerIds.delete(participantId);
+    (session.connection as any).emit?.("speakerStop", { participantId });
+  };
+
+  room.on("activeSpeakersChanged", onActiveSpeakersChanged);
+  room.on("participantDisconnected", onParticipantDisconnected);
+
+  session.roomCleanup.push(() => {
+    room.off("activeSpeakersChanged", onActiveSpeakersChanged);
+    room.off("participantDisconnected", onParticipantDisconnected);
+  });
+}
+
+function createAudioSubscription(params: {
+  session: VoiceResponderSession;
+  participantId: string;
+}): LiveKitReceiveSubscription {
+  const room = ((params.session.connection as any).room ?? null) as {
+    on?: (event: string, listener: (...args: any[]) => void) => void;
+    off?: (event: string, listener: (...args: any[]) => void) => void;
+    remoteParticipants?: Map<string, RemoteParticipant>;
+  } | null;
+
+  if (!room?.on || !room?.off) {
+    voiceWarn("audio subscribe unavailable: room missing", {
+      sessionKey: params.session.key,
+      participantId: params.participantId,
+    });
+    return { stop: () => undefined };
+  }
+
+  let stopped = false;
+  const readersByTrackSid = new Map<string, any>();
+
+  const emitAudioFrame = (participantId: string, frame: any) => {
+    const samples = frame?.data;
+    if (!(samples instanceof Int16Array) || samples.length === 0) return;
+    const channels = Math.max(1, Number(frame?.channels ?? 1));
+    const samplesPerChannel = Math.max(1, Number(frame?.samplesPerChannel ?? samples.length / channels));
+    (params.session.connection as any).emit?.("audioFrame", {
+      participantId,
+      samples,
+      sampleRate: Number(frame?.sampleRate ?? 48_000),
+      channels,
+      samplesPerChannel,
+    } satisfies LiveKitAudioFrame);
+  };
+
+  const startTrackReader = (track: RemoteTrack | undefined, participant: RemoteParticipant) => {
+    if (stopped || !isAudioTrack(track)) return;
+    const participantId = getParticipantIdentity(participant);
+    if (!participantId || !idsLikelyMatch(participantId, params.participantId)) return;
+
+    const trackSid = (track as any).sid ? String((track as any).sid) : `${participantId}:audio`;
+    if (readersByTrackSid.has(trackSid)) return;
+
+    const stream = new AudioStream(track);
+    const reader = stream.getReader();
+    readersByTrackSid.set(trackSid, reader);
+
+    void (async () => {
+      try {
+        while (!stopped) {
+          const result = await reader.read();
+          if (result.done) break;
+          emitAudioFrame(participantId, result.value);
+        }
+      } catch (error) {
+        if (!stopped) {
+          voiceWarn("audio stream reader failed", {
+            sessionKey: params.session.key,
+            participantId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      } finally {
+        readersByTrackSid.delete(trackSid);
+      }
+    })();
+  };
+
+  const stopTrackReader = (track: RemoteTrack, participant: RemoteParticipant) => {
+    const participantId = getParticipantIdentity(participant);
+    if (!participantId || !idsLikelyMatch(participantId, params.participantId)) return;
+    const trackSid = (track as any).sid ? String((track as any).sid) : "";
+    if (!trackSid) return;
+    const reader = readersByTrackSid.get(trackSid);
+    if (!reader) return;
+    readersByTrackSid.delete(trackSid);
+    void reader.cancel().catch(() => undefined);
+  };
+
+  const onTrackSubscribed = (
+    track: RemoteTrack,
+    _publication: unknown,
+    participant: RemoteParticipant,
+  ) => {
+    startTrackReader(track, participant);
+  };
+
+  const onTrackUnsubscribed = (
+    track: RemoteTrack,
+    _publication: unknown,
+    participant: RemoteParticipant,
+  ) => {
+    stopTrackReader(track, participant);
+  };
+
+  room.on("trackSubscribed", onTrackSubscribed);
+  room.on("trackUnsubscribed", onTrackUnsubscribed);
+
+  if (room.remoteParticipants) {
+    for (const participant of room.remoteParticipants.values()) {
+      const participantId = getParticipantIdentity(participant);
+      if (!participantId || !idsLikelyMatch(participantId, params.participantId)) continue;
+      for (const publication of participant.trackPublications.values()) {
+        publication.setSubscribed?.(true);
+        startTrackReader((publication as any).track as RemoteTrack | undefined, participant);
+      }
+    }
+  }
+
+  return {
+    stop: () => {
+      if (stopped) return;
+      stopped = true;
+      room.off?.("trackSubscribed", onTrackSubscribed);
+      room.off?.("trackUnsubscribed", onTrackUnsubscribed);
+      for (const reader of readersByTrackSid.values()) {
+        void reader.cancel().catch(() => undefined);
+      }
+      readersByTrackSid.clear();
+    },
+  };
 }
 
 function flattenInt16(chunks: Int16Array[]): Int16Array {
@@ -703,6 +930,9 @@ function teardownResponderSession(key: string): void {
   session.connection.off("speakerStart", session.onSpeakerStart);
   session.connection.off("speakerStop", session.onSpeakerStop);
   session.connection.off("disconnect", session.onDisconnect);
+  for (const cleanup of session.roomCleanup) cleanup();
+  session.roomCleanup = [];
+  session.activeSpeakerIds.clear();
 
   voiceResponderSessions.delete(key);
 }
@@ -712,11 +942,15 @@ function ensureResponderSession(params: {
   guildId: string;
   channelId: string;
   connection: LiveKitRtcConnection;
+  botUserId?: string;
 }): VoiceResponderSession {
   const key = toSessionKey(params.accountId, params.guildId, params.channelId);
   const existing = voiceResponderSessions.get(key);
   if (existing && existing.connection === params.connection) {
-    voiceTrace("reusing existing responder session", { key });
+    if (params.botUserId && !existing.botUserId) {
+      existing.botUserId = params.botUserId;
+    }
+    voiceTrace("reusing existing responder session", { key, botUserId: existing.botUserId });
     return existing;
   }
   if (existing) {
@@ -737,11 +971,18 @@ function ensureResponderSession(params: {
     guildId: params.guildId,
     channelId: params.channelId,
     connection: params.connection,
+    botUserId: params.botUserId,
     participants: new Map(),
     aliases: new Map(),
     unsubscribedFrameCounts: new Map(),
     queue: Promise.resolve(),
+    activeSpeakerIds: new Set(),
+    roomCleanup: [],
     onAudioFrame: (frame) => {
+      if (isBotParticipantIdentity(session, frame.participantId)) {
+        return;
+      }
+
       const state = resolveParticipantStateForIncoming(session, frame.participantId);
       if (!state) {
         const nextCount = (session.unsubscribedFrameCounts.get(frame.participantId) ?? 0) + 1;
@@ -794,6 +1035,10 @@ function ensureResponderSession(params: {
       }
     },
     onSpeakerStart: ({ participantId }) => {
+      if (isBotParticipantIdentity(session, participantId)) {
+        return;
+      }
+
       const state = resolveParticipantStateForIncoming(session, participantId);
       if (!state) {
         voiceTrace(`speaker start for unsubscribed participant: ${participantId}`, {
@@ -832,6 +1077,10 @@ function ensureResponderSession(params: {
       state.lastUtteranceDurationMs = undefined;
     },
     onSpeakerStop: ({ participantId }) => {
+      if (isBotParticipantIdentity(session, participantId)) {
+        return;
+      }
+
       const state = resolveParticipantStateForIncoming(session, participantId);
       if (!state) {
         voiceTrace(`speaker stop for unsubscribed participant: ${participantId}`, {
@@ -891,6 +1140,7 @@ function ensureResponderSession(params: {
   params.connection.on("speakerStart", session.onSpeakerStart);
   params.connection.on("speakerStop", session.onSpeakerStop);
   params.connection.on("disconnect", session.onDisconnect);
+  bridgeLiveKitSpeakerEvents(session);
 
   const room = (params.connection as any).room;
   const remoteParticipantIds = room?.remoteParticipants
@@ -900,6 +1150,7 @@ function ensureResponderSession(params: {
   voiceResponderSessions.set(key, session);
   voiceTrace("responder session active", {
     key,
+    botUserId: session.botUserId,
     remoteParticipantIds,
   });
   return session;
@@ -1116,6 +1367,7 @@ export async function voiceSubscribeFluxer(params: {
     guildId: params.guildId,
     channelId: params.channelId,
     connection,
+    botUserId: client.user?.id,
   });
 
   const room = (connection as any).room;
@@ -1156,8 +1408,9 @@ export async function voiceSubscribeFluxer(params: {
     };
   }
 
-  const subscription = connection.subscribeParticipantAudio(resolvedParticipantId, {
-    autoResubscribe: true,
+  const subscription = createAudioSubscription({
+    session,
+    participantId: resolvedParticipantId,
   });
 
   session.participants.set(resolvedParticipantId, {

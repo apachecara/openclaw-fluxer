@@ -12,8 +12,11 @@ importers:
         specifier: ^1.2.2
         version: 1.2.2
       '@fluxerjs/voice':
-        specifier: file:./vendor/fluxerjs-voice
-        version: file:vendor/fluxerjs-voice(@discordjs/opus@0.10.0)(opusscript@0.0.8)
+        specifier: ^1.2.2
+        version: 1.2.2(@discordjs/opus@0.10.0)(opusscript@0.0.8)
+      '@livekit/rtc-node':
+        specifier: ^0.13.24
+        version: 0.13.24
       zod:
         specifier: ^4.3.6
         version: 4.3.6
@@ -24,6 +27,9 @@ importers:
       '@commitlint/config-conventional':
         specifier: ^20.4.2
         version: 20.4.2
+      '@fluxerjs/collection':
+        specifier: ^1.2.2
+        version: 1.2.2
       '@types/node':
         specifier: ^22.19.11
         version: 22.19.11
@@ -507,27 +513,50 @@ packages:
   '@eshaz/web-worker@1.2.2':
     resolution: {integrity: sha512-WxXiHFmD9u/owrzempiDlBB1ZYqiLnm9s6aPc8AlFQalq2tKmqdmMr9GXOupDgzXtqnBipj8Un0gkIm7Sjf8mw==}
 
+  '@fluxerjs/builders@1.2.1':
+    resolution: {integrity: sha512-fej0vD1C6YK2bY9wbKKNliwj4Xocsuty1VEn6qgUizMuhcFyUIz1aSL3c0MTsR2VTfZb1B1ARNYHOo6tpSlBjw==}
+
   '@fluxerjs/builders@1.2.2':
     resolution: {integrity: sha512-647yuM44Fs+Cf/MKo01XRWoVb7RoFdSOBHebFiTLLCTO/tqz+dgZ4wgVsDNu9O/BB/oZ2tjAp9jDTxvXMXkUbA==}
 
+  '@fluxerjs/collection@1.2.1':
+    resolution: {integrity: sha512-SIoWqeH3fFnQv81pMhvMpBx5D5eRONtqiDiYuP5X5Ox36uicuOPZba5ZboaIq6xBKFN6PIRvEHOLrKygfZvjig==}
+
   '@fluxerjs/collection@1.2.2':
     resolution: {integrity: sha512-ryytiFh38gELqOLHBtL6Tz4f7/7DIu9L2CMTOqNYoer7E1ef8ukU7YiyANASWHgTf34hcGMC0tdi0dcFFFKkKQ==}
+
+  '@fluxerjs/core@1.2.1':
+    resolution: {integrity: sha512-KmntwbJRqqkZtF7wwVSw9BAI6X9yMa8a4BUOnDGmu46LdXDl+YTZnaph3I+fBdJ3PEWb2MgYaqeVL4ZUjWRxwg==}
+    engines: {node: '>=18.0.0'}
 
   '@fluxerjs/core@1.2.2':
     resolution: {integrity: sha512-P+c1jveYqwWGT6vafw+U1WmDPJ0Brp+aNa52Qp2vSsEQ3FLNUg+/25PhyrcPP0x2Mf7zoa1Wv9zGLlkHlKb9Ag==}
     engines: {node: '>=18.0.0'}
 
+  '@fluxerjs/rest@1.2.1':
+    resolution: {integrity: sha512-StmWnUesHUVtnPKX5fl4zPU90WaU2vIxttXyZQi8DONyQqXVGlH6H5e/RSx8uCLGdRRqyaN+Ug+ms/Z4dUFHWw==}
+
   '@fluxerjs/rest@1.2.2':
     resolution: {integrity: sha512-Y96A2wQJ8akiAPpiyQm2WWBfNvrQBGIxIuwFCTuXkWg/g+0D6hYrVB7VHxQlnBeDUlj4T+fSJiqSoAYQ3pwrCQ==}
+
+  '@fluxerjs/types@1.2.1':
+    resolution: {integrity: sha512-FEbffW4HOGZoKGj1lDYF1l+RbdizOATWgyiPtiAOI75BU7ksctax8PyOMdYGy0UrhsLgPvCGx/0WQkbG3l96Vg==}
 
   '@fluxerjs/types@1.2.2':
     resolution: {integrity: sha512-z3AcTxVF2iY/D0XR8xGIcx+c6LY6eNLWR0uO46xNGmEqpm5guE3joDz/EN8DfAZXuap/ludgqX6EA8dLADIeMg==}
 
+  '@fluxerjs/util@1.2.1':
+    resolution: {integrity: sha512-3puOy103li5tNyQeMjiXbCbmeXqzhJD9SIVWf21WeSjy7FCd8p8j56RM6l75ZVqU1gKDBj9xNf/E+b0pHEkIXQ==}
+
   '@fluxerjs/util@1.2.2':
     resolution: {integrity: sha512-H0c6rKufJJQsz7cloZSK1EqqbRCaxEIF2LdJ4cIRiGPczQTleD2xAIOQ2NvBZxnFvwx+OeetZs79b42bsjcjHQ==}
 
-  '@fluxerjs/voice@file:vendor/fluxerjs-voice':
-    resolution: {directory: vendor/fluxerjs-voice, type: directory}
+  '@fluxerjs/voice@1.2.2':
+    resolution: {integrity: sha512-+k5EKBxTkOdJHVihaavVBosOkJgr4b+s0dheTWPdUHGeD0XQtyQtyTjmUpaVaR8yy70EO5OquHyL535hTVlaBA==}
+    engines: {node: '>=18.0.0'}
+
+  '@fluxerjs/ws@1.2.1':
+    resolution: {integrity: sha512-SBwwymsdMZYyjuqH8TMmQUjwj2yHMSV/s4Rtx+jeYegtpYB2+JnzbHGwcbIGlnBO1NoDBD+H4RcFOkIfkSp8ag==}
 
   '@fluxerjs/ws@1.2.2':
     resolution: {integrity: sha512-twg1wYRYo4DlEHsVHSuUhSAKGK2qTmHM2PV3LNSdE0HdGQIB1EFviSuo0rWDpCb1sVTwIzBVMtthrlxyPfVtKA==}
@@ -5437,12 +5466,31 @@ snapshots:
 
   '@eshaz/web-worker@1.2.2': {}
 
+  '@fluxerjs/builders@1.2.1':
+    dependencies:
+      '@fluxerjs/types': 1.2.1
+      '@fluxerjs/util': 1.2.1
+
   '@fluxerjs/builders@1.2.2':
     dependencies:
       '@fluxerjs/types': 1.2.2
       '@fluxerjs/util': 1.2.2
 
+  '@fluxerjs/collection@1.2.1': {}
+
   '@fluxerjs/collection@1.2.2': {}
+
+  '@fluxerjs/core@1.2.1':
+    dependencies:
+      '@fluxerjs/builders': 1.2.1
+      '@fluxerjs/collection': 1.2.1
+      '@fluxerjs/rest': 1.2.1
+      '@fluxerjs/types': 1.2.1
+      '@fluxerjs/util': 1.2.1
+      '@fluxerjs/ws': 1.2.1
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
 
   '@fluxerjs/core@1.2.2':
     dependencies:
@@ -5456,19 +5504,31 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
+  '@fluxerjs/rest@1.2.1':
+    dependencies:
+      '@fluxerjs/types': 1.2.1
+
   '@fluxerjs/rest@1.2.2':
     dependencies:
       '@fluxerjs/types': 1.2.2
 
+  '@fluxerjs/types@1.2.1': {}
+
   '@fluxerjs/types@1.2.2': {}
+
+  '@fluxerjs/util@1.2.1':
+    dependencies:
+      '@fluxerjs/types': 1.2.1
 
   '@fluxerjs/util@1.2.2':
     dependencies:
       '@fluxerjs/types': 1.2.2
 
-  '@fluxerjs/voice@file:vendor/fluxerjs-voice(@discordjs/opus@0.10.0)(opusscript@0.0.8)':
+  '@fluxerjs/voice@1.2.2(@discordjs/opus@0.10.0)(opusscript@0.0.8)':
     dependencies:
-      '@fluxerjs/core': 1.2.2
+      '@fluxerjs/collection': 1.2.1
+      '@fluxerjs/core': 1.2.1
+      '@fluxerjs/types': 1.2.1
       '@livekit/rtc-node': 0.13.24
       mp4box: 0.5.4
       opus-decoder: 0.7.11
@@ -5484,6 +5544,14 @@ snapshots:
       - ffmpeg-static
       - node-opus
       - opusscript
+      - utf-8-validate
+
+  '@fluxerjs/ws@1.2.1':
+    dependencies:
+      '@fluxerjs/types': 1.2.1
+      ws: 8.19.0
+    transitivePeerDependencies:
+      - bufferutil
       - utf-8-validate
 
   '@fluxerjs/ws@1.2.2':
