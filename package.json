@@ -17,8 +17,8 @@
     "url": "git+https://github.com/lucasconnellm/openclaw-fluxer.git"
   },
   "dependencies": {
-    "@fluxerjs/core": "^1.2.2",
-    "@fluxerjs/voice": "^1.2.2",
+    "@fluxerjs/core": "^1.2.3",
+    "@fluxerjs/voice": "^1.2.3",
     "@livekit/rtc-node": "^0.13.24",
     "zod": "^4.3.6"
   },
