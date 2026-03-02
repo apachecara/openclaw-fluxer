@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/lucasconnellm/openclaw-fluxer/compare/v0.5.0...v0.6.0) (2026-03-02)
+
+
+### Features
+
+* v1.2.3 compat — upstream perms, silent replies, dep bump ([793721b](https://github.com/lucasconnellm/openclaw-fluxer/commit/793721b464363c467c8e956928bd19404337b0db))
+
 ## [0.5.0](https://github.com/lucasconnellm/openclaw-fluxer/compare/v0.4.0...v0.5.0) (2026-02-22)
 
 
