@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/lucasconnellm/openclaw-fluxer/compare/v0.6.0...v0.6.1) (2026-03-02)
+
+
+### Bug Fixes
+
+* trigger npm publish on GitHub Release, not tag push ([#25](https://github.com/lucasconnellm/openclaw-fluxer/issues/25)) ([201c2ff](https://github.com/lucasconnellm/openclaw-fluxer/commit/201c2ffd62ac4e240c2a3c708e1819b2ea5414dc))
+
 ## [0.6.0](https://github.com/lucasconnellm/openclaw-fluxer/compare/v0.5.0...v0.6.0) (2026-03-02)
 
 
