@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.3](https://github.com/lucasconnellm/openclaw-fluxer/compare/v0.6.2...v0.6.3) (2026-03-02)
+
+
+### Bug Fixes
+
+* add --provenance flag to pnpm publish ([#32](https://github.com/lucasconnellm/openclaw-fluxer/issues/32)) ([9ecfb0b](https://github.com/lucasconnellm/openclaw-fluxer/commit/9ecfb0b90538de464a16b6b7eb43a808ee25d71f))
+* remove workflow_call chaining from release-please ([#29](https://github.com/lucasconnellm/openclaw-fluxer/issues/29)) ([9ce3037](https://github.com/lucasconnellm/openclaw-fluxer/commit/9ce3037445b0b9275db0a22b6b104f8fa7982338))
+
 ## [0.6.2](https://github.com/lucasconnellm/openclaw-fluxer/compare/v0.6.1...v0.6.2) (2026-03-02)
 
 
