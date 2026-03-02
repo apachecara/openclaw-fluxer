@@ -41,4 +41,4 @@ jobs:
             exit 1
           fi
 
-      - run: pnpm publish --access public --no-git-checks
+      - run: pnpm publish --provenance --access public --no-git-checks
