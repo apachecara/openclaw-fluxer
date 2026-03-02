@@ -3,3 +3,4 @@ dist/
 .env
 .DS_Store
 *.log
+pnpm-workspace.yaml

@@ -10,6 +10,7 @@ export type FluxerSendTextInput = {
   target: string;
   text: string;
   replyToId?: string;
+  silent?: boolean;
   accountId?: string;
   abortSignal?: AbortSignal;
 };
@@ -39,6 +40,7 @@ export type FluxerSendMediaInput = {
   text?: string;
   mediaUrl: string;
   replyToId?: string;
+  silent?: boolean;
   accountId?: string;
   abortSignal?: AbortSignal;
 };
@@ -355,11 +357,13 @@ async function sendToChannelWithReplyFallback(
   channelId: string,
   payload: { content?: string; files?: Array<{ name: string; url: string }> },
   replyToId?: string,
+  options?: { silent?: boolean },
 ) {
   if (replyToId) {
     try {
       const original = await client.fetchMessage(channelId, replyToId);
-      return await original.reply(payload);
+      const replyOpts = options?.silent ? { ...payload, ping: false } : payload;
+      return await original.reply(replyOpts);
     } catch {
       // best-effort reply fallback
     }
@@ -524,6 +528,7 @@ export function createFluxerClient(config: FluxerClientConfig): FluxerClient {
               channelId,
               payload,
               input.replyToId,
+              { silent: input.silent },
             );
 
             return {
@@ -596,7 +601,8 @@ export function createFluxerClient(config: FluxerClientConfig): FluxerClient {
               if (input.replyToId) {
                 try {
                   const original = await client.fetchMessage(dm.id, input.replyToId);
-                  sent = await original.reply(payload);
+                  const replyPayload = input.silent ? { ...payload, ping: false } : payload;
+                  sent = await original.reply(replyPayload);
                 } catch {
                   sent = await dm.send(payload);
                 }
@@ -616,6 +622,7 @@ export function createFluxerClient(config: FluxerClientConfig): FluxerClient {
               channelId,
               payload,
               input.replyToId,
+              { silent: input.silent },
             );
 
             return {
