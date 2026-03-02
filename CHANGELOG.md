@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/lucasconnellm/openclaw-fluxer/compare/v0.6.1...v0.6.2) (2026-03-02)
+
+
+### Bug Fixes
+
+* add workflow_dispatch + skip tag verify for manual publish ([#27](https://github.com/lucasconnellm/openclaw-fluxer/issues/27)) ([c6ea27d](https://github.com/lucasconnellm/openclaw-fluxer/commit/c6ea27da04ccd3cd83be59d68bb368b64e4f3ef7))
+
 ## [0.6.1](https://github.com/lucasconnellm/openclaw-fluxer/compare/v0.6.0...v0.6.1) (2026-03-02)
 
 

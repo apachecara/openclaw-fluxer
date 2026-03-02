@@ -1,6 +1,6 @@
 {
   "name": "@lucasconnellm/fluxer",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "OpenClaw Fluxer channel plugin powered by @fluxerjs/core",
   "type": "module",
   "license": "MIT",
