@@ -2,6 +2,8 @@ name: Publish Package to npmjs
 on:
   release:
     types: [published]
+  workflow_call:
+  workflow_dispatch:
 
 jobs:
   build:
@@ -29,6 +31,7 @@ jobs:
       - run: pnpm test
 
       - name: Verify tag matches package.json version
+        if: github.event_name == 'release'
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}" # strips leading v
           PKG_VERSION="$(node -p "require('./package.json').version")"
