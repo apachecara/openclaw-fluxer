@@ -29,6 +29,10 @@ import {
 import { getFluxerRuntime } from "./runtime.js";
 import { editMessageFluxer, sendMessageFluxer } from "./send.js";
 import {
+  getOrCreateBindingManager,
+  tryRegisterSessionBindingAdapter,
+} from "./session-bindings.js";
+import {
   DraftPreviewController,
   resolveStreamingPreviewConfig,
 } from "./streaming-preview.js";
@@ -297,6 +301,27 @@ export async function monitorFluxerProvider(opts: MonitorFluxerOpts = {}): Promi
     jitterRatio: account.config.reconnect?.jitterRatio ?? DEFAULT_RECONNECT.jitterRatio,
   };
 
+  // Session binding manager
+  const threadBindingsConfig = (cfg.channels?.fluxer as Record<string, unknown> | undefined)
+    ?.threadBindings as { enabled?: boolean; ttlHours?: number } | undefined;
+  const bindingsEnabled = threadBindingsConfig?.enabled !== false;
+  const bindingTtlMs = (threadBindingsConfig?.ttlHours ?? 24) * 3_600_000;
+
+  const bindingManager = bindingsEnabled
+    ? getOrCreateBindingManager({
+        accountId: account.accountId,
+        ttlMs: bindingTtlMs,
+      })
+    : null;
+
+  if (bindingManager) {
+    tryRegisterSessionBindingAdapter(bindingManager).then((registered) => {
+      if (registered) {
+        logVerbose(`[${account.accountId}] session binding adapter registered globally`);
+      }
+    });
+  }
+
   // Dedupe cache
   const recentMessages = createDedupeCache({
     ttlMs: RECENT_MESSAGE_TTL_MS,
@@ -320,7 +345,7 @@ export async function monitorFluxerProvider(opts: MonitorFluxerOpts = {}): Promi
   }>({
     debounceMs: inboundDebounceMs,
     buildKey: (entry) => {
-      const threadKey = "channel"; // TODO(fluxer-threads): support thread-level debounce keys
+      const threadKey = entry.event.threadId ?? "channel";
       return `fluxer:${account.accountId}:${entry.event.chatId}:${threadKey}`;
     },
     shouldDebounce: (entry) => {
@@ -528,10 +553,21 @@ export async function monitorFluxerProvider(opts: MonitorFluxerOpts = {}): Promi
     const baseSessionKey = route.sessionKey;
     const threadKeys = resolveThreadSessionKeys({
       baseSessionKey,
-      // TODO(fluxer-threads): extract threadId from event when available
+      threadId: event.threadId,
     });
-    const sessionKey = threadKeys.sessionKey;
+
+    // Check for an active ACP/subagent session binding on this conversation
+    const binding = bindingManager?.resolveByConversation(chatId) ?? null;
+    const sessionKey = binding?.targetSessionKey ?? threadKeys.sessionKey;
+    const routeAgentId = binding?.agentId ?? route.agentId;
     const historyKey = kind === "direct" ? null : sessionKey;
+
+    if (binding) {
+      bindingManager?.touch(chatId);
+      logVerbose(
+        `fluxer: session binding active for ${chatId} → ${binding.targetSessionKey}`,
+      );
+    }
 
     // ---- Mention gating ----
     const mentionRegexes = core.channel.mentions.buildMentionRegexes(cfg, route.agentId);
@@ -691,7 +727,7 @@ export async function monitorFluxerProvider(opts: MonitorFluxerOpts = {}): Promi
     if (kind === "direct") {
       const sessionCfg = cfg.session;
       const storePath = core.channel.session.resolveStorePath(sessionCfg?.store, {
-        agentId: route.agentId,
+        agentId: routeAgentId,
       });
       await core.channel.session.updateLastRoute({
         storePath,
@@ -748,7 +784,7 @@ export async function monitorFluxerProvider(opts: MonitorFluxerOpts = {}): Promi
 
     const { onModelSelected, ...prefixOptions } = createReplyPrefixOptions({
       cfg,
-      agentId: route.agentId,
+      agentId: routeAgentId,
       channel: "fluxer",
       accountId: account.accountId,
     });
@@ -776,7 +812,7 @@ export async function monitorFluxerProvider(opts: MonitorFluxerOpts = {}): Promi
     const { dispatcher, replyOptions, markDispatchIdle } =
       core.channel.reply.createReplyDispatcherWithTyping({
         ...prefixOptions,
-        humanDelay: core.channel.reply.resolveHumanDelayConfig(cfg, route.agentId),
+        humanDelay: core.channel.reply.resolveHumanDelayConfig(cfg, routeAgentId),
         deliver: async (
           payload: ReplyPayload,
           info: { kind: "tool" | "block" | "final" },

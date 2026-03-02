@@ -243,7 +243,7 @@ export const fluxerPlugin: ChannelPlugin<ResolvedFluxerAccount> = {
   capabilities: {
     chatTypes: ["direct", "group", "channel"],
     reactions: true,
-    threads: false,
+    threads: true,
     media: true,
     nativeCommands: false,
   },

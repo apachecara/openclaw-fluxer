@@ -67,6 +67,15 @@ const FluxerAccountSchemaBase = z
       })
       .strict()
       .optional(),
+    threadBindings: z
+      .object({
+        enabled: z.boolean().optional(),
+        spawnAcpSessions: z.boolean().optional(),
+        spawnSubagentSessions: z.boolean().optional(),
+        ttlHours: z.number().positive().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

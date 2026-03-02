@@ -117,6 +117,7 @@ export type FluxerNormalizedMessageCreateEvent = {
   messageId: string;
   chatId: string;
   chatType: "direct" | "group" | "channel";
+  threadId?: string;
   senderId: string;
   senderName?: string;
   text: string;
@@ -180,6 +181,7 @@ export function normalizeFluxerInboundEvent(raw: unknown): FluxerNormalizedInbou
     (nestedAuthor
       ? readString(nestedAuthor, ["global_name", "display_name", "username", "name"])
       : undefined);
+  const threadId = readString(payload, ["threadId", "thread_id", "topicId", "topic_id"]);
   const chatType = normalizeChatType(
     readString(payload, ["chatType", "chat_type", "conversationType", "conversation_type"]),
   );
@@ -191,6 +193,7 @@ export function normalizeFluxerInboundEvent(raw: unknown): FluxerNormalizedInbou
     messageId,
     chatId,
     chatType,
+    threadId,
     senderId,
     senderName,
     text: text ?? "[attachment]",

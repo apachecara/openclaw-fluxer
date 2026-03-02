@@ -73,6 +73,13 @@ export type FluxerAccountConfig = {
     /** Hard cap for preview edits per response. */
     maxEdits?: number;
   };
+  /** ACP/subagent thread binding configuration. */
+  threadBindings?: {
+    enabled?: boolean;
+    spawnAcpSessions?: boolean;
+    spawnSubagentSessions?: boolean;
+    ttlHours?: number;
+  };
 };
 
 export type FluxerConfig = {
